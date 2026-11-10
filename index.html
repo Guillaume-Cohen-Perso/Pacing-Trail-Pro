@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pacing Trail Pro - Endurance Models & Adaptive Intensity</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Leaflet CSS & JS for OpenTopoMap -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- MathJax CDN for Mathematical Equations -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        #map { height: 440px; width: 100%; border-radius: 0.75rem; }
+        .custom-tooltip { background: rgba(15, 23, 42, 0.95); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 10px; font-size: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans pb-12">
+
+    <!-- Header -->
+    <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg border border-emerald-500/20">
+                    <i data-lucide="mountain"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">Pacing Trail Pro</h1>
+                    <p class="text-xs text-slate-400">Physiological Endurance Modeling & Adaptive Pacing</p>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs text-slate-400">Tracks:</span>
+                <button onclick="loadPreset('short')" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">15km (750m+)</button>
+                <button onclick="loadPreset('medium')" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">35km (1800m+)</button>
+                <button onclick="loadPreset('ultra')" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">80km (4500m+)</button>
+                <button onclick="enableCustomSimMode()" class="px-3 py-1.5 text-xs bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-md border border-emerald-500/40 transition font-medium flex items-center gap-1.5">
+                    <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i>
+                    Custom Simulation
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-8 space-y-8">
+        
+        <!-- Runner Config, Endurance Model, Slopes & GPX -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Forms Column -->
+            <div class="space-y-6">
+
+                <!-- Synthetic Track Generator Panel (Collapsible) -->
+                <div id="customSimPanel" class="hidden bg-slate-950/80 border border-emerald-500/40 rounded-xl p-6 shadow-xl space-y-4">
+                    <h2 class="text-lg font-semibold text-emerald-400 flex items-center gap-2">
+                        <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+                        Synthetic Course Generator
+                    </h2>
+                    
+                    <div class="space-y-3 text-xs">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="font-medium text-slate-400 block mb-1">Distance (km)</label>
+                                <input type="number" id="simDistance" value="30" step="1" min="1" max="250" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-100">
+                            </div>
+                            <div>
+                                <label class="font-medium text-slate-400 block mb-1">Elevation D+ / D- (m)</label>
+                                <input type="number" id="simDPlus" value="2000" step="50" min="50" max="15000" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-100">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="font-medium text-slate-400 block mb-1 flex justify-between">
+                                <span>Climbing share (D+)</span>
+                                <span class="text-emerald-400 font-bold"><span id="lblSimClimbRatio">50</span>% of distance</span>
+                            </label>
+                            <input type="range" id="simClimbRatio" min="20" max="80" value="50" class="w-full accent-emerald-500" oninput="document.getElementById('lblSimClimbRatio').textContent=this.value">
+                        </div>
+
+                        <div>
+                            <label class="font-medium text-slate-400 block mb-1">Relief Profile / Hills</label>
+                            <select id="simProfileType" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-100">
+                                <option value="single">Big Pass / Single climb then descent</option>
+                                <option value="hills" selected>Rolling / 3 to 4 medium bumps</option>
+                                <option value="steep">Break-legs / Steep succession of hills</option>
+                            </select>
+                        </div>
+
+                        <button onclick="generateCustomSyntheticTrack()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2 rounded-lg transition flex items-center justify-center gap-2">
+                            <i data-lucide="play" class="w-4 h-4"></i>
+                            Generate Simulation
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pacing & Endurance Model Selector -->
+                <div class="bg-slate-950/60 border border-cyan-500/40 rounded-xl p-6 shadow-xl space-y-4">
+                    <h2 class="text-lg font-semibold text-cyan-400 flex items-center gap-2">
+                        <i data-lucide="brain-circuit" class="w-5 h-5"></i>
+                        Effort Management Model
+                    </h2>
+
+                    <div class="space-y-3 text-xs">
+                        <div>
+                            <label class="font-medium text-slate-300 block mb-1">Endurance & Degradation Model:</label>
+                            <select id="pacingModel" class="w-full bg-slate-900 border border-cyan-500/50 rounded-lg px-3 py-2 text-sm focus:border-cyan-400 focus:outline-none text-cyan-200 font-semibold" onchange="toggleModelParams()">
+                                <option value="riegel">Riegel Model (Exponential power)</option>
+                                <option value="mit_cnrs" selected>MIT / CNRS Model (Logarithmic degradation)</option>
+                                <option value="daniels">VDOT / Daniels Model (VDOT formula)</option>
+                                <option value="critical_power">Critical Power (CP & W')</option>
+                                <option value="fixed">Fixed Coefficients (Ultra format >60km)</option>
+                            </select>
+                        </div>
+
+                        <!-- Riegel Model specific params -->
+                        <div id="paramRiegel" class="space-y-2 pt-1 border-t border-slate-800">
+                            <label class="font-medium text-slate-400 block flex justify-between">
+                                <span>Riegel Exponent ($E$)</span>
+                                <span class="text-cyan-400 font-bold" id="lblRiegelExp">-0.07</span>
+                            </label>
+                            <input type="range" id="riegelExp" min="-0.12" max="-0.03" step="0.005" value="-0.07" class="w-full accent-cyan-400" oninput="document.getElementById('lblRiegelExp').textContent=this.value">
+                            <p class="text-[11px] text-slate-400 leading-tight">Standard: -0.07 | Highly enduring: -0.05 | Explosive runner: -0.09</p>
+                        </div>
+
+                        <!-- MIT/CNRS Model specific params -->
+                        <div id="paramMitCnrs" class="space-y-2 pt-1 border-t border-slate-800">
+                            <label class="font-medium text-slate-400 block flex justify-between">
+                                <span>Endurance Index ($IE$)</span>
+                                <span class="text-cyan-400 font-bold" id="lblMitIe">-5.5</span>
+                            </label>
+                            <input type="range" id="mitIe" min="-9.0" max="-3.0" step="0.5" value="-5.5" class="w-full accent-cyan-400" oninput="document.getElementById('lblMitIe').textContent=this.value">
+                            <p class="text-[11px] text-slate-400 leading-tight">%VMA loss per time doubling. Standard: -5.5 | Elite Ultra: -3.5</p>
+                        </div>
+
+                        <!-- Critical Power specific params -->
+                        <div id="paramCP" class="hidden space-y-2 pt-1 border-t border-slate-800">
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[11px] text-slate-400 block">Critical Power CP (W)</label>
+                                    <input type="number" id="cpWatts" value="250" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100">
+                                </div>
+                                <div>
+                                    <label class="text-[11px] text-slate-400 block">Anaerobic Reserve W' (kJ)</label>
+                                    <input type="number" id="wPrime" value="18" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Calculated overall intensity KPI -->
+                        <div class="bg-slate-900/90 p-3 rounded-lg border border-cyan-500/30 flex justify-between items-center">
+                            <div>
+                                <span class="text-[11px] text-slate-400 block">Overall Trail Intensity ($\% \text{VMA}$)</span>
+                                <span class="text-[10px] text-slate-400 font-mono" id="simKmEqSummary">Based on equivalent effort km</span>
+                            </div>
+                            <span id="kpiTargetIntensityPct" class="text-xl font-bold text-cyan-400 font-mono">-- %</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Runner Profile Form -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+                    <h2 class="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                        <i data-lucide="user" class="text-emerald-400 w-5 h-5"></i>
+                        Runner Physical Profile
+                    </h2>
+
+                    <div class="space-y-3 text-xs">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="font-medium text-slate-400 block mb-1">VMA (km/h)</label>
+                                <input type="number" id="vma" value="15.5" step="0.5" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-100">
+                            </div>
+                            <div>
+                                <label class="font-medium text-amber-400 block mb-1">Runner + Pack Mass (kg)</label>
+                                <input type="number" id="runnerMass" value="70" step="1" min="40" max="130" class="w-full bg-slate-900 border border-amber-500/50 rounded-lg px-3 py-2 text-sm focus:border-amber-400 focus:outline-none text-amber-200 font-bold">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="font-medium text-slate-400 block mb-1">Max HR (bpm)</label>
+                                <input type="number" id="fcMax" value="185" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-100">
+                            </div>
+                            <div>
+                                <label class="font-medium text-slate-400 block mb-1">Resting HR (bpm)</label>
+                                <input type="number" id="fcRepos" value="52" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-100">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="font-medium text-slate-400 block mb-1">Target VAM on steep climbs (m D+/h)</label>
+                            <input type="number" id="vam" value="700" step="50" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-100">
+                        </div>
+
+                        <div>
+                            <label class="font-medium text-slate-400 block mb-1">Downhill Skill</label>
+                            <select id="downhillSkill" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-100">
+                                <option value="0.85">Cautious / Technical weak (-15%)</option>
+                                <option value="1.0" selected>Normal / Standard</option>
+                                <option value="1.15">Fast / Agile (+15%)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="font-medium text-slate-400 block mb-1">Target Carb Intake (g/hour)</label>
+                            <input type="number" id="carbsTarget" value="60" min="30" max="90" step="5" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none text-slate-100">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Slope Thresholds Configuration -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+                    <h2 class="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                        <i data-lucide="sliders" class="text-amber-400 w-5 h-5"></i>
+                        Slope Zone Thresholds (%)
+                    </h2>
+
+                    <div class="space-y-3 text-xs">
+                        <div>
+                            <label class="font-medium text-slate-400 block mb-1 flex justify-between">
+                                <span class="text-rose-400 font-bold">🔴 Steep Climb / Walk</span>
+                                <span>Slope ≥ <span id="valSlopeSteep">12</span>%</span>
+                            </label>
+                            <input type="range" id="slopeSteepUp" min="8" max="25" value="12" class="w-full accent-rose-500" oninput="updateSlopeLabels()">
+                        </div>
+
+                        <div>
+                            <label class="font-medium text-slate-400 block mb-1 flex justify-between">
+                                <span class="text-amber-400 font-bold">🟠 Moderate Climb</span>
+                                <span>Slope ≥ <span id="valSlopeMod">3</span>%</span>
+                            </label>
+                            <input type="range" id="slopeModUp" min="1" max="10" value="3" class="w-full accent-amber-500" oninput="updateSlopeLabels()">
+                        </div>
+
+                        <div>
+                            <label class="font-medium text-slate-400 block mb-1 flex justify-between">
+                                <span class="text-cyan-400 font-bold">🔵 Gentle Descent</span>
+                                <span>Slope ≤ <span id="valSlopeDownMod">-3</span>%</span>
+                            </label>
+                            <input type="range" id="slopeModDown" min="-10" max="-1" value="-3" class="w-full accent-cyan-500" oninput="updateSlopeLabels()">
+                        </div>
+
+                        <div>
+                            <label class="font-medium text-slate-400 block mb-1 flex justify-between">
+                                <span class="text-purple-400 font-bold">🟣 Steep / Technical Descent</span>
+                                <span>Slope ≤ <span id="valSlopeDownSteep">-10</span>%</span>
+                            </label>
+                            <input type="range" id="slopeSteepDown" min="-25" max="-8" value="-10" class="w-full accent-purple-500" oninput="updateSlopeLabels()">
+                        </div>
+                    </div>
+
+                    <button onclick="calculatePacing()" class="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold py-2.5 rounded-lg transition flex items-center justify-center gap-2 mt-2">
+                        <i data-lucide="calculator" class="w-4 h-4"></i>
+                        Recalculate Pacing
+                    </button>
+                </div>
+
+            </div>
+
+            <!-- OpenTopoMap & GPX File -->
+            <div class="lg:col-span-2 space-y-6">
+                
+                <!-- GPX Upload Zone & Summary -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <h2 class="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                            <i data-lucide="map-pin" class="text-emerald-400 w-5 h-5"></i>
+                            Course GPX File
+                        </h2>
+                        <label class="cursor-pointer bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition">
+                            <i data-lucide="upload" class="w-4 h-4"></i>
+                            <span>Import GPX</span>
+                            <input type="file" id="gpxFileInput" accept=".gpx" class="hidden" onchange="handleFileUpload(event)">
+                        </label>
+                    </div>
+
+                    <!-- Key Metrics / KPI -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
+                        <div class="bg-slate-900/80 border border-slate-800 p-3 rounded-lg text-center">
+                            <span class="text-xs text-slate-400 block">Total Distance</span>
+                            <span id="kpiDistance" class="text-lg font-bold text-slate-100">-- km</span>
+                        </div>
+                        <div class="bg-slate-900/80 border border-slate-800 p-3 rounded-lg text-center">
+                            <span class="text-xs text-slate-400 block">Positive Elevation</span>
+                            <span id="kpiDPlus" class="text-lg font-bold text-emerald-400">-- m D+</span>
+                        </div>
+                        <div class="bg-slate-900/80 border border-slate-800 p-3 rounded-lg text-center">
+                            <span class="text-xs text-slate-400 block">Estimated Time</span>
+                            <span id="kpiTime" class="text-lg font-bold text-cyan-400">-- h -- min</span>
+                        </div>
+                        <div class="bg-slate-900/80 border border-slate-800 p-3 rounded-lg text-center">
+                            <span class="text-xs text-slate-400 block">Carb Requirement</span>
+                            <span id="kpiCarbs" class="text-lg font-bold text-amber-400">-- g</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- OpenTopoMap with Colored Segments -->
+                <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                            <i data-lucide="map" class="text-emerald-400 w-4 h-4"></i>
+                            Topographic Map (OpenTopoMap) - Effort Micro-Segments
+                        </h3>
+                        <button onclick="resetMapView()" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded border border-slate-700 text-slate-300">Recenter</button>
+                    </div>
+
+                    <div id="map"></div>
+
+                    <!-- Dynamic Legend -->
+                    <div class="flex flex-wrap items-center justify-center gap-4 text-xs text-slate-400 pt-1">
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-red-500"></span> Steep Climb (≥<span class="lblSteepUp">12</span>%)</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500"></span> Moderate Climb (≥<span class="lblModUp">3</span>%)</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500"></span> Flat / False flat</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-cyan-500"></span> Gentle Descent (≤<span class="lblModDown">-3</span>%)</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-purple-500"></span> Steep Descent (≤<span class="lblSteepDown">-10</span>%)</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Canvas Elevation Profile with Overlay Options -->
+        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-slate-800/80 pb-3">
+                <h3 class="text-md font-semibold text-slate-200 flex items-center gap-2">
+                    <i data-lucide="activity" class="text-emerald-400 w-5 h-5"></i>
+                    Elevation Profile & 5km Grid Marks
+                </h3>
+                
+                <!-- Overlay Checkboxes -->
+                <div class="flex flex-wrap items-center gap-5 text-xs">
+                    <label class="flex items-center gap-2 cursor-pointer bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg hover:border-slate-500 transition">
+                        <input type="checkbox" id="chkShowPace" onchange="renderElevationProfile(currentHoverDist)" class="accent-amber-400 w-4 h-4 rounded">
+                        <span class="text-amber-300 font-medium">⚡ Pace (min/km)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-lg hover:border-slate-500 transition">
+                        <input type="checkbox" id="chkShowFc" onchange="renderElevationProfile(currentHoverDist)" class="accent-rose-500 w-4 h-4 rounded">
+                        <span class="text-rose-400 font-medium">❤️ Target HR (bpm)</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center text-xs">
+                <span id="hoverInfoSummary" class="text-emerald-400 font-mono">Hover over the graph to explore...</span>
+                <div class="flex items-center gap-4 text-slate-400">
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-0.5 bg-amber-400"></span> Pace</span>
+                    <span class="flex items-center gap-1.5"><span class="w-2.5 h-0.5 bg-rose-500"></span> Target HR</span>
+                </div>
+            </div>
+
+            <div class="relative w-full h-72">
+                <canvas id="elevationCanvas" class="w-full h-full cursor-crosshair"></canvas>
+            </div>
+        </div>
+
+        <!-- Splits / Route Table -->
+        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4 overflow-x-auto">
+            <h3 class="text-md font-semibold text-slate-200 flex items-center gap-2">
+                <i data-lucide="list-ordered" class="text-emerald-400 w-5 h-5"></i>
+                Roadbook & Kilometer Split Table
+            </h3>
+
+            <table class="w-full text-left text-xs text-slate-300 border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 uppercase bg-slate-900/50">
+                        <th class="p-3">Km</th>
+                        <th class="p-3">Alt. (m)</th>
+                        <th class="p-3">Avg Slope</th>
+                        <th class="p-3">Target Pace</th>
+                        <th class="p-3">Speed (km/h)</th>
+                        <th class="p-3">Target HR</th>
+                        <th class="p-3">Power (W)</th>
+                        <th class="p-3">Cumul. Time</th>
+                        <th class="p-3">Recommendation & Strategy</th>
+                    </tr>
+                </thead>
+                <tbody id="splitsTableBody" class="divide-y divide-slate-800/60">
+                    <!-- Dynamically generated in JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- DOCS & EXPLANATORY FORMULAS SECTION -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
+            
+            <!-- Mathematical and Physiological Formulas -->
+            <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+                <h3 class="text-md font-semibold text-slate-200 flex items-center gap-2">
+                    <i data-lucide="binary" class="text-emerald-400 w-5 h-5"></i>
+                    Calculation Details, Assumptions & Endurance Models
+                </h3>
+                
+                <div class="space-y-4 text-xs text-slate-300">
+
+                    <!-- Step 1: Equivalent Effort Distance -->
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 space-y-1">
+                        <span class="font-bold text-cyan-400">Step 1 — Equivalent Effort Distance ($D_{\text{eq}}$):</span>
+                        <p>$$D_{\text{eq}} = D_{\text{real}} + \frac{D^+}{100}$$</p>
+                        <p class="text-slate-400 text-[11px]">Example: $30\,\text{km}$ with $2000\,\text{m D}^+$ yields $D_{\text{eq}} = 30 + 20 = 50\,\text{effort-km}$.</p>
+                    </div>
+
+                    <!-- Step 2: Endurance Model Choice -->
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 space-y-2">
+                        <span class="font-bold text-cyan-400">Step 2 — Global Intensity Modeling ($\% \text{VMA}_{\text{target}}$):</span>
+                        
+                        <div class="space-y-2 text-[11px]">
+                            <p><strong>A. Riegel Model (Exponential Power):</strong></p>
+                            <p>$$\% \text{VMA}_{\text{target}} = \left(\frac{D_{\text{ref}}}{D_{\text{eq}}}\right)^E$$</p>
+                            <p class="text-slate-400">where $D_{\text{ref}} = 10\,\text{km}$ (reference race where VMA is sustainable at 100%), and $E \approx -0.07$ (fatigue exponent).</p>
+
+                            <p class="pt-1 border-t border-slate-800"><strong>B. MIT / CNRS Model (Logarithmic Degradation - Péronnet & Thibault):</strong></p>
+                            <p>$$\% \text{VMA}_{\text{target}} = 100 + IE \cdot \ln\left(\frac{t_{\text{estimated}}}{t_{\text{VMA}}}\right)$$</p>
+                            <p class="text-slate-400">where $IE$ is the Endurance Index (e.g., $-5.5$), $t_{\text{VMA}} \approx 6\,\text{min}$, and $t_{\text{estimated}}$ is the estimated race time.</p>
+
+                            <p class="pt-1 border-t border-slate-800"><strong>C. Daniels / VDOT Model:</strong></p>
+                            <p>$$\% \text{VMA}_{\text{target}} = 0.8 + 0.189439 \cdot e^{-0.012778 \cdot t} + 0.298955 \cdot e^{-0.193260 \cdot t}$$</p>
+
+                            <p class="pt-1 border-t border-slate-800"><strong>D. Critical Power (CP - Stryd):</strong></p>
+                            <p>$$P_{\text{target}} = CP + \frac{W'}{t_{\text{estimated}}}$$</p>
+
+                            <p class="pt-1 border-t border-slate-800"><strong>E. Fixed Coefficients (Ultra Format > 60km):</strong></p>
+                            <p class="text-slate-400">Assumes stabilized %VMA around $60\text{--}65\%$ for very long duration efforts.</p>
+                        </div>
+                    </div>
+
+                    <!-- Step 3: Segment Speed with GAP -->
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 space-y-1">
+                        <span class="font-bold text-emerald-400">Step 3 — Segment Speed ($v_{\text{segment}}$) and GAP:</span>
+                        <p>$$\text{Speed}_{\text{uphill}} = \frac{\text{VMA} \times \% \text{VMA}_{\text{target}}}{1 + (\text{Slope \%} \times 0.05)}$$</p>
+                        <p>$$\text{Speed}_{\text{walk D+}} = \frac{\text{VAM (m/h)}}{\text{Slope \%} \times 10} \quad \text{(if Slope} \ge \text{Walk Threshold)}$$</p>
+                    </div>
+
+                    <!-- Step 4: Heart Rate Retroactive Calculation -->
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 space-y-1">
+                        <span class="font-bold text-emerald-400">Step 4 — Target HR Calculation (Karvonen):</span>
+                        <p>$$\% \text{Heart Rate Intensity} = \min\left(0.95, \, \frac{\text{Speed}_{\text{segment}}}{\text{VMA}} \cdot \left(1 + |\text{Slope \%}| \cdot 0.02\right)\right)$$</p>
+                        <p>$$\text{HR}_{\text{target}} = \text{HR}_{\text{rest}} + (\text{HR}_{\text{max}} - \text{HR}_{\text{rest}}) \times \% \text{Heart Rate Intensity}$$</p>
+                    </div>
+
+                    <!-- Step 5: Mechanical Power -->
+                    <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 space-y-1">
+                        <span class="font-bold text-emerald-400">Step 5 — Mechanical Power Estimation (Watts):</span>
+                        <p>$$P = M \cdot v \cdot \left(1 + 0.35 \cdot \frac{\text{Slope \%}}{100}\right)$$</p>
+                        <p class="text-slate-400 text-[11px]">where $M$ is total runner mass with equipment (in $\text{kg}$) and $v$ is movement speed (in $\text{m/s}$).</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Full Bibliographic References -->
+            <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-6 shadow-xl space-y-4">
+                <h3 class="text-md font-semibold text-slate-200 flex items-center gap-2">
+                    <i data-lucide="book-open" class="text-emerald-400 w-5 h-5"></i>
+                    Bibliographic References & Modeling
+                </h3>
+
+                <ul class="space-y-3 text-xs text-slate-300">
+                    <li class="bg-slate-900/50 p-3 rounded-lg border border-slate-800/80">
+                        <span class="font-bold text-cyan-400 block">Riegel, P. S. (1981)</span>
+                        <em>"Athletic records and endurance."</em> American Scientist, 69(3), 285-290.
+                        <p class="text-slate-400 mt-1">Foundational formula for exponential speed degradation relative to race distance.</p>
+                    </li>
+
+                    <li class="bg-slate-900/50 p-3 rounded-lg border border-slate-800/80">
+                        <span class="font-bold text-cyan-400 block">Péronnet, F. & Thibault, G. (1989)</span>
+                        <em>"Mathematical analysis of running performance and world records."</em> Journal of Applied Physiology, 67(1), 453-465.
+                        <p class="text-slate-400 mt-1">Basis of logarithmic degradation modeling based on the Endurance Index ($IE$).</p>
+                    </li>
+
+                    <li class="bg-slate-900/50 p-3 rounded-lg border border-slate-800/80">
+                        <span class="font-bold text-cyan-400 block">Daniels, J. (2013)</span>
+                        <em>"Daniels' Running Formula."</em> Human Kinetics.
+                        <p class="text-slate-400 mt-1">VDOT modeling and oxygen uptake for competition pacing.</p>
+                    </li>
+
+                    <li class="bg-slate-900/50 p-3 rounded-lg border border-slate-800/80">
+                        <span class="font-bold text-cyan-400 block">Jones, A. M. & Vanhatalo, A. (2017)</span>
+                        <em>"The 'Critical Power' concept: applications to sports performance with a focus on intermittent exercise."</em> Sports Medicine.
+                        <p class="text-slate-400 mt-1">Critical Power ($CP$) framework and anaerobic work capacity ($W'$).</p>
+                    </li>
+
+                    <li class="bg-slate-900/50 p-3 rounded-lg border border-slate-800/80">
+                        <span class="font-bold text-cyan-400 block">Minetti, A. E. et al. (2002)</span>
+                        <em>"Energy cost of walking and running at extreme uphill and downhill slopes."</em> Journal of Applied Physiology.
+                        <p class="text-slate-400 mt-1">Energy cost equations per meter of elevation change (Grade Adjusted Pace).</p>
+                    </li>
+                </ul>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Main JavaScript -->
+    <script>
+        let rawGpxPoints = [];
+        let map = null;
+        let polylineGroup = null;
+        let hoverMarker = null;
+        let calculatedSegments = [];
+        let currentHoverDist = null;
+
+        function toggleModelParams() {
+            let model = document.getElementById('pacingModel').value;
+            document.getElementById('paramRiegel').classList.toggle('hidden', model !== 'riegel');
+            document.getElementById('paramMitCnrs').classList.toggle('hidden', model !== 'mit_cnrs');
+            document.getElementById('paramCP').classList.toggle('hidden', model !== 'critical_power');
+            calculatePacing();
+        }
+
+        function updateSlopeLabels() {
+            let sSteepUp = document.getElementById('slopeSteepUp').value;
+            let sModUp = document.getElementById('slopeModUp').value;
+            let sModDown = document.getElementById('slopeModDown').value;
+            let sSteepDown = document.getElementById('slopeSteepDown').value;
+
+            document.getElementById('valSlopeSteep').textContent = sSteepUp;
+            document.getElementById('valSlopeMod').textContent = sModUp;
+            document.getElementById('valSlopeDownMod').textContent = sModDown;
+            document.getElementById('valSlopeDownSteep').textContent = sSteepDown;
+
+            document.querySelectorAll('.lblSteepUp').forEach(el => el.textContent = sSteepUp);
+            document.querySelectorAll('.lblModUp').forEach(el => el.textContent = sModUp);
+            document.querySelectorAll('.lblModDown').forEach(el => el.textContent = sModDown);
+            document.querySelectorAll('.lblSteepDown').forEach(el => el.textContent = sSteepDown);
+        }
+
+        function initMap() {
+            map = L.map('map').setView([45.8326, 6.8652], 12);
+            L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+                maxZoom: 17,
+                attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)'
+            }).addTo(map);
+
+            polylineGroup = L.featureGroup().addTo(map);
+
+            const cursorIcon = L.divIcon({
+                className: 'custom-cursor-icon',
+                html: '<div style="background-color: #10b981; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 10px rgba(16,185,129,0.8);"></div>',
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
+            });
+            hoverMarker = L.marker([0, 0], { icon: cursorIcon });
+        }
+
+        function calculateHaversine(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function enableCustomSimMode() {
+            document.getElementById('customSimPanel').classList.remove('hidden');
+            generateCustomSyntheticTrack();
+        }
+
+        function generateCustomSyntheticTrack() {
+            let distKm = parseFloat(document.getElementById('simDistance').value) || 30;
+            let dPlus = parseFloat(document.getElementById('simDPlus').value) || 2000;
+            let climbRatio = (parseFloat(document.getElementById('simClimbRatio').value) || 50) / 100;
+            let profileType = document.getElementById('simProfileType').value;
+
+            let totalDistM = distKm * 1000;
+            let numPoints = Math.max(120, Math.min(400, Math.round(distKm * 8)));
+            
+            rawGpxPoints = [];
+            let baseLat = 45.8326;
+            let baseLon = 6.8652;
+            let startAlt = 400;
+
+            for (let i = 0; i <= numPoints; i++) {
+                let normDist = i / numPoints;
+                let currentDist = normDist * totalDistM;
+                let alt = startAlt;
+
+                if (profileType === 'single') {
+                    if (normDist <= climbRatio) {
+                        alt += (normDist / climbRatio) * dPlus;
+                    } else {
+                        alt += dPlus * (1 - (normDist - climbRatio) / (1 - climbRatio));
+                    }
+                } else if (profileType === 'hills') {
+                    let waves = Math.sin(normDist * Math.PI * 3);
+                    let baseTrend = normDist <= climbRatio ? (normDist / climbRatio) : (1 - (normDist - climbRatio) / (1 - climbRatio));
+                    alt += (baseTrend * 0.6 + Math.max(0, waves) * 0.4) * dPlus;
+                } else {
+                    let waves = Math.abs(Math.sin(normDist * Math.PI * 6));
+                    alt += waves * dPlus * 0.85;
+                }
+
+                let angle = normDist * Math.PI * 2;
+                let lat = baseLat + (Math.sin(angle) * (distKm / 300));
+                let lon = baseLon + (Math.cos(angle) * (distKm / 300));
+
+                rawGpxPoints.push({
+                    lat: lat,
+                    lon: lon,
+                    ele: Math.max(startAlt, alt),
+                    dist: currentDist
+                });
+            }
+
+            calculatePacing();
+        }
+
+        function loadPreset(type) {
+            document.getElementById('customSimPanel').classList.add('hidden');
+            rawGpxPoints = [];
+            let numPoints = type === 'short' ? 80 : (type === 'medium' ? 180 : 350);
+            let maxDist = type === 'short' ? 15000 : (type === 'medium' ? 35000 : 80000);
+            
+            let currentAlt = 500;
+            let currentDist = 0;
+            let baseLat = 45.8326;
+            let baseLon = 6.8652;
+
+            for (let i = 0; i <= numPoints; i++) {
+                currentDist = (i / numPoints) * maxDist;
+                let wave1 = Math.sin(i / 10) * 400;
+                let wave2 = Math.cos(i / 4) * 150;
+                let wave3 = Math.sin(i / 2) * 50;
+                currentAlt = 500 + Math.max(0, wave1 + wave2 + wave3 + (i * 5));
+
+                let lat = baseLat + (currentDist / 111000) * 0.7;
+                let lon = baseLon + (Math.sin(i / 8) * 0.05);
+
+                rawGpxPoints.push({ lat, lon, ele: currentAlt, dist: currentDist });
+            }
+
+            calculatePacing();
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById('customSimPanel').classList.add('hidden');
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const xmlDoc = new DOMParser().parseFromString(e.target.result, "text/xml");
+                const trkpts = xmlDoc.getElementsByTagName("trkpt");
+
+                rawGpxPoints = [];
+                let totalDist = 0;
+
+                for (let i = 0; i < trkpts.length; i++) {
+                    let lat = parseFloat(trkpts[i].getAttribute("lat"));
+                    let lon = parseFloat(trkpts[i].getAttribute("lon"));
+                    let eleNode = trkpts[i].getElementsByTagName("ele")[0];
+                    let ele = eleNode ? parseFloat(eleNode.textContent) : 0;
+
+                    if (i > 0) {
+                        let prev = rawGpxPoints[i - 1];
+                        let d = calculateHaversine(prev.lat, prev.lon, lat, lon);
+                        totalDist += d;
+                    }
+
+                    rawGpxPoints.push({ lat, lon, ele, dist: totalDist });
+                }
+
+                calculatePacing();
+            };
+            reader.readAsText(file);
+        }
+
+        function buildAdaptiveSegments() {
+            if (rawGpxPoints.length < 2) return [];
+
+            let segments = [];
+            let currentSegPoints = [rawGpxPoints[0]];
+            let MIN_SEG_DIST = 150;
+            let SLOPE_INFLECTION_THRESHOLD = 3.0;
+            let lastSlope = 0;
+
+            for (let i = 1; i < rawGpxPoints.length; i++) {
+                let pt = rawGpxPoints[i];
+                currentSegPoints.push(pt);
+
+                let startPt = currentSegPoints[0];
+                let segDist = pt.dist - startPt.dist;
+                let eleDiff = pt.ele - startPt.ele;
+                let currentSlope = segDist > 0 ? (eleDiff / segDist) * 100 : 0;
+
+                let slopeDelta = Math.abs(currentSlope - lastSlope);
+                let isDirectionChange = (lastSlope > 1 && currentSlope < -1) || (lastSlope < -1 && currentSlope > 1);
+
+                if (segDist >= MIN_SEG_DIST && (slopeDelta >= SLOPE_INFLECTION_THRESHOLD || isDirectionChange || i === rawGpxPoints.length - 1)) {
+                    segments.push({
+                        points: [...currentSegPoints],
+                        startDist: startPt.dist,
+                        endDist: pt.dist,
+                        length: segDist,
+                        startEle: startPt.ele,
+                        endEle: pt.ele,
+                        dPlus: eleDiff > 0 ? eleDiff : 0,
+                        dMinus: eleDiff < 0 ? Math.abs(eleDiff) : 0,
+                        slope: currentSlope
+                    });
+
+                    currentSegPoints = [pt];
+                    lastSlope = currentSlope;
+                }
+            }
+
+            return segments;
+        }
+
+        function calculatePacing() {
+            if (rawGpxPoints.length === 0) return;
+
+            const vma = parseFloat(document.getElementById('vma').value) || 15.5;
+            const runnerMass = parseFloat(document.getElementById('runnerMass').value) || 70;
+            const fcMax = parseFloat(document.getElementById('fcMax').value) || 185;
+            const fcRepos = parseFloat(document.getElementById('fcRepos').value) || 52;
+            const vam = parseFloat(document.getElementById('vam').value) || 700;
+            const downhillSkill = parseFloat(document.getElementById('downhillSkill').value) || 1.0;
+            const carbsTarget = parseFloat(document.getElementById('carbsTarget').value) || 60;
+
+            const sSteepUp = parseFloat(document.getElementById('slopeSteepUp').value);
+            const sModUp = parseFloat(document.getElementById('slopeModUp').value);
+            const sModDown = parseFloat(document.getElementById('slopeModDown').value);
+            const sSteepDown = parseFloat(document.getElementById('slopeSteepDown').value);
+
+            let totalDistance = rawGpxPoints[rawGpxPoints.length - 1].dist;
+            let totalDPlus = 0;
+            for (let i = 1; i < rawGpxPoints.length; i++) {
+                let diff = rawGpxPoints[i].ele - rawGpxPoints[i-1].ele;
+                if (diff > 0) totalDPlus += diff;
+            }
+
+            let kmEffortEq = (totalDistance / 1000) + (totalDPlus / 100);
+            document.getElementById('simKmEqSummary').textContent = `${(totalDistance/1000).toFixed(1)}km + ${Math.round(totalDPlus)}m D+ = ${kmEffortEq.toFixed(1)} effort-km`;
+
+            let pacingModel = document.getElementById('pacingModel').value;
+            let targetVmaRatio = 0.65;
+
+            if (pacingModel === 'riegel') {
+                let E = parseFloat(document.getElementById('riegelExp').value) || -0.07;
+                targetVmaRatio = Math.pow(10 / Math.max(10, kmEffortEq), Math.abs(E));
+            } else if (pacingModel === 'mit_cnrs') {
+                let IE = parseFloat(document.getElementById('mitIe').value) || -5.5;
+                let approxHours = kmEffortEq / (vma * 0.6);
+                let timeRatio = Math.max(1, (approxHours * 60) / 6);
+                targetVmaRatio = (100 + (IE * Math.log(timeRatio))) / 100;
+            } else if (pacingModel === 'daniels') {
+                let approxHours = kmEffortEq / (vma * 0.6);
+                let tMin = approxHours * 60;
+                targetVmaRatio = 0.8 + 0.189439 * Math.exp(-0.012778 * tMin) + 0.298955 * Math.exp(-0.193260 * tMin);
+            } else if (pacingModel === 'critical_power') {
+                targetVmaRatio = 0.70;
+            } else {
+                targetVmaRatio = 0.65;
+            }
+
+            targetVmaRatio = Math.max(0.45, Math.min(0.95, targetVmaRatio));
+            document.getElementById('kpiTargetIntensityPct').textContent = (targetVmaRatio * 100).toFixed(1) + ' %';
+
+            const adaptiveSegments = buildAdaptiveSegments();
+            calculatedSegments = [];
+
+            let cumulativeTimeSec = 0;
+
+            adaptiveSegments.forEach((seg) => {
+                let slope = seg.slope;
+                let speedKmh = 10;
+                let isWalking = false;
+
+                if (slope >= sSteepUp) {
+                    isWalking = true;
+                    let speedFromVam = (vam / (slope / 100)) / 1000;
+                    speedKmh = Math.min(Math.max(speedFromVam, 2.5), 6.0);
+                } else if (slope >= sModUp) {
+                    let penalty = 1 + (slope * 0.05);
+                    speedKmh = (vma * targetVmaRatio) / penalty;
+                } else if (slope <= sSteepDown) {
+                    let boost = 1 + (Math.abs(slope) * 0.02 * downhillSkill);
+                    speedKmh = Math.min((vma * targetVmaRatio * 1.05) * boost, 18.0);
+                } else if (slope <= sModDown) {
+                    let boost = 1 + (Math.abs(slope) * 0.015 * downhillSkill);
+                    speedKmh = Math.min((vma * targetVmaRatio) * boost, 16.0);
+                } else {
+                    speedKmh = vma * targetVmaRatio;
+                }
+
+                let durationSec = (seg.length / 1000) / speedKmh * 3600;
+                cumulativeTimeSec += durationSec;
+
+                let segmentIntensityPct = Math.min(0.95, (speedKmh / vma) * (1 + Math.abs(slope)*0.02));
+                let targetFc = Math.round(fcRepos + (fcMax - fcRepos) * Math.max(0.55, segmentIntensityPct));
+                
+                let speedMs = speedKmh / 3.6;
+                let estimatedWatts = Math.round(runnerMass * speedMs * (1 + (slope / 100) * 0.35));
+
+                let color = '#10b981';
+                if (slope >= sSteepUp) color = '#ef4444';
+                else if (slope >= sModUp) color = '#f59e0b';
+                else if (slope <= sSteepDown) color = '#a855f7';
+                else if (slope <= sModDown) color = '#06b6d4';
+
+                calculatedSegments.push({
+                    ...seg,
+                    speedKmh,
+                    durationSec,
+                    cumulativeTimeSec,
+                    targetFc,
+                    estimatedWatts,
+                    isWalking,
+                    color
+                });
+            });
+
+            updateKPIs(totalDistance, totalDPlus, cumulativeTimeSec, carbsTarget);
+            renderMapSegments();
+            renderElevationProfile(currentHoverDist);
+            renderSplitsTable();
+            
+            if (window.MathJax && window.MathJax.typesetPromise) {
+                window.MathJax.typesetPromise();
+            }
+        }
+
+        function updateKPIs(distM, dPlusM, totalSec, carbsPerHour) {
+            document.getElementById('kpiDistance').textContent = (distM / 1000).toFixed(1) + ' km';
+            document.getElementById('kpiDPlus').textContent = Math.round(dPlusM) + ' m D+';
+            
+            let h = Math.floor(totalSec / 3600);
+            let m = Math.round((totalSec % 3600) / 60);
+            document.getElementById('kpiTime').textContent = `${h}h ${m}min`;
+
+            let totalCarbs = Math.round((totalSec / 3600) * carbsPerHour);
+            document.getElementById('kpiCarbs').textContent = `${totalCarbs} g`;
+        }
+
+        function renderMapSegments() {
+            polylineGroup.clearLayers();
+
+            calculatedSegments.forEach(seg => {
+                let latLngs = seg.points.map(p => [p.lat, p.lon]);
+                L.polyline(latLngs, {
+                    color: seg.color,
+                    weight: 5,
+                    opacity: 0.9
+                }).addTo(polylineGroup);
+            });
+
+            if (polylineGroup.getBounds().isValid()) {
+                map.fitBounds(polylineGroup.getBounds(), { padding: [30, 30] });
+            }
+        }
+
+        function resetMapView() {
+            if (polylineGroup && polylineGroup.getBounds().isValid()) {
+                map.fitBounds(polylineGroup.getBounds());
+            }
+        }
+
+        function findPointAtDistance(targetDist) {
+            if (rawGpxPoints.length === 0) return null;
+            let low = 0;
+            let high = rawGpxPoints.length - 1;
+            let closest = rawGpxPoints[0];
+
+            while (low <= high) {
+                let mid = Math.floor((low + high) / 2);
+                if (rawGpxPoints[mid].dist <= targetDist) {
+                    closest = rawGpxPoints[mid];
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
+            }
+            return closest;
+        }
+
+        function findSegmentAtDistance(targetDist) {
+            return calculatedSegments.find(s => targetDist >= s.startDist && targetDist <= s.endDist) || calculatedSegments[0];
+        }
+
+        function setupCanvasInteractivity() {
+            const canvas = document.getElementById('elevationCanvas');
+            
+            canvas.onmousemove = function(e) {
+                if (rawGpxPoints.length === 0 || calculatedSegments.length === 0) return;
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                
+                let padding = { left: 45, right: 45 };
+                let drawWidth = canvas.width - padding.left - padding.right;
+                let totalDist = rawGpxPoints[rawGpxPoints.length - 1].dist;
+
+                let relX = Math.max(0, Math.min(mouseX - padding.left, drawWidth));
+                let targetDist = (relX / drawWidth) * totalDist;
+                currentHoverDist = targetDist;
+
+                renderElevationProfile(targetDist);
+
+                let pt = findPointAtDistance(targetDist);
+                let seg = findSegmentAtDistance(targetDist);
+
+                if (pt && seg) {
+                    if (!map.hasLayer(hoverMarker)) {
+                        hoverMarker.addTo(map);
+                    }
+                    hoverMarker.setLatLng([pt.lat, pt.lon]);
+
+                    let timeSec = seg.cumulativeTimeSec;
+                    let h = Math.floor(timeSec / 3600);
+                    let m = Math.floor((timeSec % 3600) / 60);
+                    let timeStr = `${h > 0 ? h + 'h ' : ''}${m}m`;
+
+                    document.getElementById('hoverInfoSummary').textContent = 
+                        `Km ${(targetDist/1000).toFixed(2)} | Alt: ${Math.round(pt.ele)}m | Slope: ${seg.slope.toFixed(1)}% | Pace: ${formatPace(seg.speedKmh)}/km | HR: ${seg.targetFc}bpm | Power: ${seg.estimatedWatts}W | Time: ${timeStr}`;
+                }
+            };
+
+            canvas.onmouseleave = function() {
+                currentHoverDist = null;
+                if (map.hasLayer(hoverMarker)) {
+                    map.removeLayer(hoverMarker);
+                }
+                document.getElementById('hoverInfoSummary').textContent = "Hover over the graph to explore...";
+                renderElevationProfile(null);
+            };
+        }
+
+        function renderElevationProfile(highlightDist = null) {
+            const canvas = document.getElementById('elevationCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (calculatedSegments.length === 0) return;
+
+            const showPace = document.getElementById('chkShowPace').checked;
+            const showFc = document.getElementById('chkShowFc').checked;
+
+            let totalDist = calculatedSegments[calculatedSegments.length - 1].endDist;
+            let minEle = Math.min(...rawGpxPoints.map(p => p.ele));
+            let maxEle = Math.max(...rawGpxPoints.map(p => p.ele));
+            let eleRange = (maxEle - minEle) || 1;
+
+            let padding = { top: 30, bottom: 40, left: 45, right: 45 };
+            let drawWidth = canvas.width - padding.left - padding.right;
+            let drawHeight = canvas.height - padding.top - padding.bottom;
+
+            calculatedSegments.forEach(seg => {
+                ctx.beginPath();
+                let xStart = padding.left + (seg.startDist / totalDist) * drawWidth;
+                let xEnd = padding.left + (seg.endDist / totalDist) * drawWidth;
+
+                let yStart = padding.top + drawHeight - ((seg.startEle - minEle) / eleRange) * drawHeight;
+                let yEnd = padding.top + drawHeight - ((seg.endEle - minEle) / eleRange) * drawHeight;
+
+                ctx.moveTo(xStart, canvas.height - padding.bottom);
+                ctx.lineTo(xStart, yStart);
+                ctx.lineTo(xEnd, yEnd);
+                ctx.lineTo(xEnd, canvas.height - padding.bottom);
+                ctx.closePath();
+
+                ctx.fillStyle = seg.color + '44';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.moveTo(xStart, yStart);
+                ctx.lineTo(xEnd, yEnd);
+                ctx.strokeStyle = seg.color;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            });
+
+            if (showPace) {
+                let paces = calculatedSegments.map(s => 60 / s.speedKmh);
+                let minPace = Math.min(...paces);
+                let maxPace = Math.max(...paces);
+                let paceRange = (maxPace - minPace) || 1;
+
+                ctx.beginPath();
+                calculatedSegments.forEach((seg, idx) => {
+                    let x = padding.left + ((seg.startDist + seg.endDist) / 2 / totalDist) * drawWidth;
+                    let paceVal = 60 / seg.speedKmh;
+                    let y = padding.top + ((paceVal - minPace) / paceRange) * drawHeight;
+                    if (idx === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([3, 3]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            if (showFc) {
+                let fcs = calculatedSegments.map(s => s.targetFc);
+                let minFc = Math.min(...fcs);
+                let maxFc = Math.max(...fcs);
+                let fcRange = (maxFc - minFc) || 1;
+
+                ctx.beginPath();
+                calculatedSegments.forEach((seg, idx) => {
+                    let x = padding.left + ((seg.startDist + seg.endDist) / 2 / totalDist) * drawWidth;
+                    let fcVal = seg.targetFc;
+                    let y = padding.top + drawHeight - ((fcVal - minFc) / fcRange) * drawHeight;
+                    if (idx === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.strokeStyle = '#f43f5e';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, canvas.height - padding.bottom);
+            ctx.lineTo(canvas.width - padding.right, canvas.height - padding.bottom);
+            ctx.stroke();
+
+            let totalKm = totalDist / 1000;
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+
+            for (let km = 0; km <= totalKm; km += 5) {
+                let x = padding.left + (km * 1000 / totalDist) * drawWidth;
+                
+                ctx.beginPath();
+                ctx.moveTo(x, canvas.height - padding.bottom);
+                ctx.lineTo(x, canvas.height - padding.bottom + 6);
+                ctx.strokeStyle = '#64748b';
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x, padding.top);
+                ctx.lineTo(x, canvas.height - padding.bottom);
+                ctx.strokeStyle = '#33415522';
+                ctx.stroke();
+
+                ctx.fillText(`${km} km`, x, canvas.height - padding.bottom + 18);
+            }
+
+            ctx.textAlign = 'right';
+            ctx.fillText(`${Math.round(minEle)}m`, padding.left - 8, canvas.height - padding.bottom);
+            ctx.fillText(`${Math.round(maxEle)}m`, padding.left - 8, padding.top + 8);
+
+            if (highlightDist !== null) {
+                let xPos = padding.left + (highlightDist / totalDist) * drawWidth;
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(xPos, padding.top);
+                ctx.lineTo(xPos, canvas.height - padding.bottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+
+        function formatPace(speedKmh) {
+            if (speedKmh <= 0) return "--:--";
+            let paceMin = 60 / speedKmh;
+            let min = Math.floor(paceMin);
+            let sec = Math.round((paceMin - min) * 60);
+            if (sec === 60) { min++; sec = 0; }
+            return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+        }
+
+        function renderSplitsTable() {
+            const tbody = document.getElementById('splitsTableBody');
+            tbody.innerHTML = '';
+
+            let totalDist = calculatedSegments[calculatedSegments.length - 1].endDist;
+            let totalKms = Math.ceil(totalDist / 1000);
+
+            for (let km = 1; km <= totalKms; km++) {
+                let targetDist = km * 1000;
+                let segsInKm = calculatedSegments.filter(s => s.endDist >= (km - 1) * 1000 && s.startDist <= targetDist);
+
+                if (segsInKm.length === 0) continue;
+
+                let avgSlope = segsInKm.reduce((acc, s) => acc + s.slope, 0) / segsInKm.length;
+                let avgSpeed = segsInKm.reduce((acc, s) => acc + s.speedKmh, 0) / segsInKm.length;
+                let avgFc = Math.round(segsInKm.reduce((acc, s) => acc + s.targetFc, 0) / segsInKm.length);
+                let avgWatts = Math.round(segsInKm.reduce((acc, s) => acc + s.estimatedWatts, 0) / segsInKm.length);
+                let lastSeg = segsInKm[segsInKm.length - 1];
+
+                let timeSec = lastSeg.cumulativeTimeSec;
+                let h = Math.floor(timeSec / 3600);
+                let m = Math.floor((timeSec % 3600) / 60);
+                let s = Math.round(timeSec % 60);
+                let timeStr = `${h > 0 ? h + 'h ' : ''}${m < 10 ? '0' : ''}${m}m ${s < 10 ? '0' : ''}${s}s`;
+
+                let reco = "Maintain a steady rhythm";
+                if (avgSlope > 12) reco = "🚶 Dynamic power hike, hands on thighs";
+                else if (avgSlope > 5) reco = "⛰️ Runable climb, short rhythmic steps";
+                else if (avgSlope < -8) reco = "⚠️ Technical descent, brace core";
+                else if (avgSlope < 0) reco = "⚡ Rolling descent, roll out stride";
+
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/40 transition border-b border-slate-800/40";
+                tr.innerHTML = `
+                    <td class="p-3 font-semibold text-emerald-400">Km ${km}</td>
+                    <td class="p-3">${Math.round(lastSeg.endEle)} m</td>
+                    <td class="p-3 font-medium ${avgSlope > 0 ? 'text-amber-400' : 'text-cyan-400'}">${avgSlope.toFixed(1)} %</td>
+                    <td class="p-3 font-mono text-slate-100">${formatPace(avgSpeed)} /km</td>
+                    <td class="p-3">${avgSpeed.toFixed(1)} km/h</td>
+                    <td class="p-3 text-rose-400 font-medium">${avgFc} bpm</td>
+                    <td class="p-3 text-amber-300 font-mono font-bold">${avgWatts} W</td>
+                    <td class="p-3 font-bold text-cyan-300">${timeStr}</td>
+                    <td class="p-3 text-slate-400">${reco}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+        }
+
+        window.onload = function() {
+            initMap();
+            setupCanvasInteractivity();
+            updateSlopeLabels();
+            lucide.createIcons();
+            loadPreset('medium');
+        };
+    </script>
+</body>
+</html>
