@@ -13,6 +13,8 @@
 
 **Pacing Trail Pro** is a comprehensive, client-side web application designed for trail runners, ultra-endurance athletes, and coaches. It takes raw GPX track data (or generates synthetic race profiles) and computes an adaptive, scientifically-grounded pacing strategy across micro-segments based on topography, runner physiology, and fatigue models.
 
+The web page is shown here : [Pacing Trail Pro](https://guillaume-cohen-perso.github.io/Pacing-Trail-Pro/)
+
 ---
 
 ## ✨ Key Features
