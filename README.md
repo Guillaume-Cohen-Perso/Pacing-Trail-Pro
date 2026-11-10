@@ -43,5 +43,5 @@
 ## 📂 Project Structure
 
 ```text
-├── trail_pacing_calculator_map_8_eng.html # Complete self-contained application (HTML, CSS, JS)
+├── index.html # Complete self-contained application (HTML, CSS, JS)
 └── README.md                               # Project documentation
