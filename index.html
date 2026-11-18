@@ -538,7 +538,7 @@
         }
 
         function initMap() {
-            map = L.map('map').setView([45.8326, 6.8652], 12);
+            map = L.map('map').setView([43.6, 1.08], 12);
             L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
                 maxZoom: 17,
                 attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap (CC-BY-SA)'
@@ -581,9 +581,9 @@
             let numPoints = Math.max(120, Math.min(400, Math.round(distKm * 8)));
             
             rawGpxPoints = [];
-            let baseLat = 45.8326;
-            let baseLon = 6.8652;
-            let startAlt = 400;
+            let baseLat = 43.6;
+            let baseLon = 1.08;
+            let startAlt = 150;
 
             for (let i = 0; i <= numPoints; i++) {
                 let normDist = i / numPoints;
@@ -626,10 +626,10 @@
             let numPoints = type === 'short' ? 80 : (type === 'medium' ? 180 : 350);
             let maxDist = type === 'short' ? 15000 : (type === 'medium' ? 35000 : 80000);
             
-            let currentAlt = 500;
+            let currentAlt = 150;
             let currentDist = 0;
-            let baseLat = 45.8326;
-            let baseLon = 6.8652;
+            let baseLat = 43.6;
+            let baseLon = 1.08;
 
             for (let i = 0; i <= numPoints; i++) {
                 currentDist = (i / numPoints) * maxDist;
@@ -686,8 +686,8 @@
 
             let segments = [];
             let currentSegPoints = [rawGpxPoints[0]];
-            let MIN_SEG_DIST = 150;
-            let SLOPE_INFLECTION_THRESHOLD = 3.0;
+            let MIN_SEG_DIST = 20;
+            let SLOPE_INFLECTION_THRESHOLD = 0.1;
             let lastSlope = 0;
 
             for (let i = 1; i < rawGpxPoints.length; i++) {
@@ -726,11 +726,11 @@
         function calculatePacing() {
             if (rawGpxPoints.length === 0) return;
 
-            const vma = parseFloat(document.getElementById('vma').value) || 15.5;
+            const vma = parseFloat(document.getElementById('vma').value) || 15;
             const runnerMass = parseFloat(document.getElementById('runnerMass').value) || 70;
-            const fcMax = parseFloat(document.getElementById('fcMax').value) || 185;
-            const fcRepos = parseFloat(document.getElementById('fcRepos').value) || 52;
-            const vam = parseFloat(document.getElementById('vam').value) || 700;
+            const fcMax = parseFloat(document.getElementById('fcMax').value) || 178;
+            const fcRepos = parseFloat(document.getElementById('fcRepos').value) || 50;
+            const vam = parseFloat(document.getElementById('vam').value) || 650;
             const downhillSkill = parseFloat(document.getElementById('downhillSkill').value) || 1.0;
             const carbsTarget = parseFloat(document.getElementById('carbsTarget').value) || 60;
 
